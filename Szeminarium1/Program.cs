@@ -1,4 +1,5 @@
-﻿using Silk.NET.OpenGL;
+﻿
+using Silk.NET.OpenGL;
 using Silk.NET.Windowing;
 
 namespace Szeminarium1
@@ -13,15 +14,15 @@ namespace Szeminarium1
 
         private static readonly string VertexShaderSource = @"
         #version 330 core
-        layout (location = 1) in vec3 vPos;
-		layout (location = 2) in vec4 vCol;
+        layout (location = 0) in vec3 vPos;
+		layout (location = 1) in vec4 vCol;
 
 		out vec4 outCol;
         
         void main()
         {
 			outCol = vCol;
-            gl_Position = vec4(vPos.x, vPos.y, vPos.z, 5.0);
+            gl_Position = vec4(vPos.x, vPos.y, vPos.z, 1.0);
         }
         ";
 
@@ -107,25 +108,24 @@ namespace Szeminarium1
             uint vao = Gl.GenVertexArray();
             Gl.BindVertexArray(vao);
 
-            //rontas: at formazza az abrat mas pontokkal
             float[] vertexArray = new float[] {
-                -1.5f, -0.5f, 0.0f,
-                +0.5f, -1.5f, 0.0f,
-                 0.0f, +0.5f, 1.0f,
-                 1f, 1f, 0f
+                0.5f, 0.5f, 0.0f,
+                -0.5f, 0.5f, 0.0f,
+                 -0.5f, -0.5f, 0.0f,
+                 0.5f, -0.5f, 0f,
+
             };
 
-            //rontas: at szinezi az abrat
             float[] colorArray = new float[] {
                 1.0f, 0.0f, 0.0f, 1.0f,
                 0.0f, 1.0f, 0.0f, 1.0f,
-                0.0f, 1.0f, -1.0f, 1.0f,
-                1.0f, -1.0f, 0.0f, 1.0f,
+                0.0f, 0.0f, 1.0f, 1.0f,
+                1.0f, 0.0f, 0.0f, 1.0f,
             };
 
-            uint[] indexArray = new uint[] { 
+            uint[] indexArray = new uint[] {
                 0, 1, 2,
-                2, 1, 3,
+                2, 3, 0
             };
 
             uint vertices = Gl.GenBuffer();
@@ -147,7 +147,7 @@ namespace Szeminarium1
             Gl.BindBuffer(GLEnum.ArrayBuffer, 0);
 
             Gl.UseProgram(program);
-            
+
             Gl.DrawElements(GLEnum.Triangles, (uint)indexArray.Length, GLEnum.UnsignedInt, null); // we used element buffer
             Gl.BindBuffer(GLEnum.ElementArrayBuffer, 0);
             Gl.BindVertexArray(vao);
