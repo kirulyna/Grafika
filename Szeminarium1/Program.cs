@@ -115,11 +115,12 @@ namespace Szeminarium1
                  1f, 1f, 0f
             };
 
+            //rontas: at szinezi az abrat
             float[] colorArray = new float[] {
-                1.0f, 0.0f, 0.0f, 1.0f,
+                5.0f, 0.0f, 0.0f, 1.0f,
                 0.0f, 1.0f, 0.0f, 1.0f,
-                0.0f, 0.0f, 1.0f, 1.0f,
-                1.0f, 0.0f, 0.0f, 1.0f,
+                0.0f, 1.0f, -1.0f, 1.0f,
+                1.0f, -10.0f, 0.0f, 1.0f,
             };
 
             uint[] indexArray = new uint[] { 
