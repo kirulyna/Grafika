@@ -124,8 +124,9 @@ namespace Szeminarium1
             };
 
             uint[] indexArray = new uint[] { 
-                0, 1, 2,
-                2, 1, 3
+                1, 2, 3,
+                2, 1, 3,
+                4, 5, 6
             };
 
             uint vertices = Gl.GenBuffer();
