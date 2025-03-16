@@ -107,10 +107,11 @@ namespace Szeminarium1
             uint vao = Gl.GenVertexArray();
             Gl.BindVertexArray(vao);
 
+            //rontas: at formazza az abrat mas pontokkal
             float[] vertexArray = new float[] {
-                -0.5f, -0.5f, 0.0f,
-                +0.5f, -0.5f, 0.0f,
-                 0.0f, +0.5f, 0.0f,
+                -1.5f, -0.5f, 0.0f,
+                +0.5f, -1.5f, 0.0f,
+                 0.0f, +0.5f, 1.0f,
                  1f, 1f, 0f
             };
 
