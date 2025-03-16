@@ -129,17 +129,16 @@ namespace Szeminarium1
             };
 
             uint vertices = Gl.GenBuffer();
-            Gl.EnableVertexAttribArray(0);
             Gl.BindBuffer(GLEnum.ArrayBuffer, vertices);
             Gl.BufferData(GLEnum.ArrayBuffer, (ReadOnlySpan<float>)vertexArray.AsSpan(), GLEnum.StaticDraw);
             Gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 0, null);
-            
+            Gl.EnableVertexAttribArray(0);
 
             uint colors = Gl.GenBuffer();
             Gl.BindBuffer(GLEnum.ArrayBuffer, colors);
             Gl.BufferData(GLEnum.ArrayBuffer, (ReadOnlySpan<float>)colorArray.AsSpan(), GLEnum.StaticDraw);
             Gl.VertexAttribPointer(1, 4, VertexAttribPointerType.Float, false, 0, null);
-            Gl.EnableVertexAttribArray(1);
+            Gl.EnableVertexAttribArray(0);
 
             uint indices = Gl.GenBuffer();
             Gl.BindBuffer(GLEnum.ElementArrayBuffer, indices);
