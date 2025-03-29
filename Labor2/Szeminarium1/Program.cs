@@ -9,7 +9,7 @@ namespace Szeminarium1
     internal static class Program
     {
         private static IWindow window;
-        private static GL? Gl;
+        private static GL Gl;
         private static uint shaderProgram;
         private static readonly List<Cube> cubes = new();
 
@@ -18,7 +18,7 @@ namespace Szeminarium1
         layout (location = 0) in vec3 vPos;
 		layout (location = 1) in vec4 vCol;
 
-        unifrom mat4 model;
+        uniform mat4 model;
         uniform mat4 view;
         uniform mat4 projection;
 
@@ -34,12 +34,12 @@ namespace Szeminarium1
 
         private const string FragmentShaderSource = @"
         #version 330 core
-        in vec4 color;
+        in vec4 outCol;
         out vec4 FragColor;
 
         void main()
         {
-            FragColor = color;
+            FragColor = outCol;
         }
         ";
 
@@ -47,7 +47,7 @@ namespace Szeminarium1
         {
             var options = WindowOptions.Default;
             options.Title = "2.Labor - Rubik kocka";
-            options.Size = new(500, 500);
+            options.Size = new(800, 800);
 
             window = Window.Create(options);
             window.Load += OnLoad;
@@ -61,7 +61,7 @@ namespace Szeminarium1
             //Console.WriteLine("Loaded");
 
             Gl = window.CreateOpenGL();
-            Gl.ClearColor(System.Drawing.Color.White);
+            Gl.ClearColor(1.0f, 1.0f, 1.0f, 1.0f);
             Gl.Enable(GLEnum.DepthTest);
 
 
@@ -79,19 +79,25 @@ namespace Szeminarium1
             Gl.AttachShader(shaderProgram, vshader);
             Gl.AttachShader(shaderProgram, fshader);
             Gl.LinkProgram(shaderProgram);
-            Gl.DetachShader(shaderProgram, vshader);
-            Gl.DetachShader(shaderProgram, fshader);
-            Gl.LinkProgram(shaderProgram);
 
             Gl.DeleteShader(vshader);
             Gl.DeleteShader(fshader);
 
-            Gl.GetProgram(shaderProgram, GLEnum.LinkStatus, out var status);
-            if (status == 0)
+            Gl.GetShader(vshader, ShaderParameterName.CompileStatus, out int vStatus);
+            if (vStatus != (int)GLEnum.True)
+                throw new Exception("Vertex shader failed to complie" + Gl.GetShaderInfoLog(vshader));
+
+            Gl.GetProgram(shaderProgram,GLEnum.LinkStatus,out var status);
+            if(status == 0)
             {
-                Console.WriteLine($"Error linking shader {Gl.GetProgramInfoLog(shaderProgram)}");
+                throw new Exception($"error linking shader: {{Gl.GetProgramInfoLog(shaderProgram)}}");
             }
 
+            //clean 
+            Gl.DetachShader(shaderProgram, vshader);
+            Gl.DetachShader (fshader, fshader);
+            Gl.DeleteShader(vshader);
+            Gl.DeleteShader (fshader);
             CreateColorfulCubes();
 
         }
