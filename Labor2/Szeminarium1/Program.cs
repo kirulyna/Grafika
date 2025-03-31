@@ -118,8 +118,56 @@ namespace Szeminarium1
                 keybourd.KeyDown += OnKeyDown;
             }
 
-            CreateColorfulCubes();
+            foreach (var mouse in input.Mice)
+            {
+                mouse.MouseMove += OnMouseMove;
+                mouse.Scroll += OnMouseScroll;
+            }
 
+            CreateColorfulCubes();
+        }
+
+        private static void OnMouseMove(IMouse mouse, Vector2 position)
+        {
+            if(firstMouse)
+            {
+                lastX = position.X;
+                lastY = position.Y;
+                firstMouse = false;
+            }
+
+            float xOffset = position.X - lastX;
+            float yOffset = lastY - position.Y;
+            lastX = position.X;
+            lastY = position.Y;
+
+            float sensitivity = 0.1f;
+            xOffset *= sensitivity;
+            yOffset *= sensitivity;
+
+            yaw += xOffset;
+            pitch += yOffset;
+
+            if(pitch > 89.0f)
+            {
+                pitch = 89.0f;
+            }
+
+            if (pitch < -89.0f)
+            {
+                pitch = -89.0f;
+            }
+
+            Vector3 front;
+            front.X = MathF.Cos(DegreesToRadians(yaw)) * MathF.Cos(DegreesToRadians(pitch));
+            front.Y = MathF.Sin(DegreesToRadians(pitch));
+            front.Z = MathF.Sin(DegreesToRadians(yaw)) * MathF.Cos(DegreesToRadians(pitch));
+            cameraFront = Vector3.Normalize(front);
+        }
+
+        private static void OnMouseScroll(IMouse mouse, ScrollWheel scroll)
+        {
+            cameraSpeed = Math.Clamp(cameraSpeed + scroll.Y * 0.01f, 0.01f, 0.2f);
         }
 
         private static void OnKeyDown(IKeyboard keyboard, Key key, int _)
