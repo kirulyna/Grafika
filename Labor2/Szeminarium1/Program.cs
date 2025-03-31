@@ -1,7 +1,9 @@
 ﻿
+using Silk.NET.Input;
 using Silk.NET.OpenGL;
 using Silk.NET.Windowing;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace Szeminarium1
@@ -12,6 +14,18 @@ namespace Szeminarium1
         private static GL Gl;
         private static uint shaderProgram;
         private static readonly List<Cube> cubes = new();
+        private static IInputContext input = null!;
+
+        //camera cucok
+        private static Vector3 cameraPosition = new(2.5f, 2.5f, 2.5f);
+        private static Vector3 cameraFront = -Vector3.Normalize(cameraPosition);
+        private static readonly Vector3 cameraUp = Vector3.UnitY;
+        private static float cameraSpeed = 0.05f;
+        private static float yaw = -135f;
+        private static float pitch = -30f;
+        private static float lastX = 400f;
+        private static float lastY = 400f;
+        private static bool firstMouse = true;
 
         private const string VertexShaderSource = @"
         #version 330 core
@@ -45,10 +59,12 @@ namespace Szeminarium1
 
         static void Main(string[] args)
         {
-            var options = WindowOptions.Default;
-            options.Title = "2.Labor - Rubik kocka";
-            options.Size = new(800, 800);
-
+            var options = WindowOptions.Default with
+            {
+                Title = "2.Labor - Rubik kocka",
+                Size = new(800, 800),
+                VSync = true
+            };
             window = Window.Create(options);
             window.Load += OnLoad;
             window.Render += OnRender;
@@ -61,6 +77,7 @@ namespace Szeminarium1
             //Console.WriteLine("Loaded");
 
             Gl = window.CreateOpenGL();
+            input = window.CreateInput();
             Gl.ClearColor(1.0f, 1.0f, 1.0f, 1.0f);
             Gl.Enable(GLEnum.DepthTest);
 
@@ -80,9 +97,6 @@ namespace Szeminarium1
             Gl.AttachShader(shaderProgram, fshader);
             Gl.LinkProgram(shaderProgram);
 
-            Gl.DeleteShader(vshader);
-            Gl.DeleteShader(fshader);
-
             Gl.GetShader(vshader, ShaderParameterName.CompileStatus, out int vStatus);
             if (vStatus != (int)GLEnum.True)
                 throw new Exception("Vertex shader failed to complie" + Gl.GetShaderInfoLog(vshader));
@@ -98,15 +112,38 @@ namespace Szeminarium1
             Gl.DetachShader (fshader, fshader);
             Gl.DeleteShader(vshader);
             Gl.DeleteShader (fshader);
+
+            foreach(var keybourd in input.Keyboards)
+            {
+                keybourd.KeyDown += OnKeyDown;
+            }
+
             CreateColorfulCubes();
 
         }
 
-        private static void GraphicWindow_Update(double deltaTime)
+        private static void OnKeyDown(IKeyboard keyboard, Key key, int _)
         {
-            // NO GL
-            // make it threadsave
-            //Console.WriteLine($"Update after {deltaTime} [s]");
+            if(key == Key.Escape)
+                window.Close();
+
+            if (key == Key.W)
+                cameraPosition += cameraFront * cameraSpeed;
+            else if (key == Key.S)
+                cameraPosition -= cameraFront * cameraSpeed;
+            else if (key == Key.A)
+                cameraPosition -= Vector3.Normalize(Vector3.Cross(cameraFront, cameraUp)) * cameraSpeed;
+            else if (key == Key.D)
+                cameraPosition += Vector3.Normalize(Vector3.Cross(cameraFront, cameraUp)) * cameraSpeed;
+            if (key == Key.Space)
+                cameraPosition += cameraUp * cameraSpeed;
+            if (key == Key.X)
+                cameraPosition -= cameraUp * cameraSpeed;
+        }
+
+        private static float DegreesToRadians(float degrees)
+        {
+            return degrees * MathF.PI / 180f;
         }
 
         private static unsafe void CreateColorfulCubes()
@@ -146,24 +183,21 @@ namespace Szeminarium1
             Gl!.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
             Gl.UseProgram(shaderProgram);
 
-            Matrix4x4 view = Matrix4x4.CreateLookAt(
-                new Vector3(2.5f, 2.5f, 2.5f),
-                Vector3.Zero,
-                Vector3.UnitY
-                );
-
+            Matrix4x4 view = Matrix4x4.CreateLookAt(cameraPosition, cameraPosition + cameraFront, cameraUp);
             Matrix4x4 projection = Matrix4x4.CreatePerspectiveFieldOfView(
-                MathF.PI / 3,
-                (float)window!.Size.X / window.Size.Y,
+                DegreesToRadians(45f),
+                (float)window.Size.X / window.Size.Y,
                 0.1f,
                 100.0f
-                );
+            );
 
             int viewLoc = Gl.GetUniformLocation(shaderProgram, "view");
             int projLoc = Gl.GetUniformLocation(shaderProgram, "projection");
             Gl.UniformMatrix4(viewLoc, 1, false, (float*)&view);
             Gl.UniformMatrix4(projLoc, 1, false, (float*)&projection);
 
+
+            //render cubes
             foreach (var cube in cubes)
             {
                 cube.Render(Gl, shaderProgram);
@@ -199,8 +233,6 @@ namespace Szeminarium1
                  -0.5f, 0.5f, -0.5f,//7
                 };
 
-
-
                 uint[] indices =
                 {
                 0,1,2,2,3,0,//front
@@ -210,8 +242,6 @@ namespace Szeminarium1
                 3,2,6,6,7,3,//top
                 0,4,5,5,1,0//bottom
                 };
-
-
 
                 Vector4[] vertexColors = new Vector4[8];
                 for (int i = 0; i < 8; i++)
@@ -223,6 +253,8 @@ namespace Szeminarium1
                 vao = gl.GenVertexArray();
                 gl.BindVertexArray(vao);
 
+
+                //vertex buffer
                 vertexBuffer = gl.GenBuffer();
                 gl.BindBuffer(GLEnum.ArrayBuffer, vertexBuffer);
                 fixed (float* ptr = vertices)
@@ -230,6 +262,7 @@ namespace Szeminarium1
                 gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 0, null);
                 gl.EnableVertexAttribArray(0);
 
+                //collor buffer
                 colorBuffer = gl.GenBuffer();
                 gl.BindBuffer(GLEnum.ArrayBuffer, colorBuffer);
                 fixed (Vector4* ptr = vertexColors)
