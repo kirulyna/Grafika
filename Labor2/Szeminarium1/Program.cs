@@ -1,47 +1,63 @@
-﻿
-using Silk.NET.Input;
+﻿using Silk.NET.Input;
 using Silk.NET.OpenGL;
 using Silk.NET.Windowing;
 using System.Numerics;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Silk.NET.OpenGL.Extensions.ImGui;
+using ImGuiNET;
 
 namespace Szeminarium1
 {
     internal static class Program
     {
-        private static IWindow window;
-        private static GL Gl;
+        private static IWindow? window;
+        private static GL? Gl;
         private static uint shaderProgram;
         private static readonly List<Cube> cubes = new();
         private static IInputContext input = null!;
+        private static ImGuiController? controller;
 
         //camera cucok
         private static Vector3 cameraPosition = new(2.5f, 2.5f, 2.5f);
         private static Vector3 cameraFront = -Vector3.Normalize(cameraPosition);
         private static readonly Vector3 cameraUp = Vector3.UnitY;
         private static float cameraSpeed = 0.05f;
-        private static float yaw = -135f;
-        private static float pitch = -30f;
+        private static float yaw = -135f;//viszintes forgatas
+        private static float pitch = -30f;//fugoleges forgatas
         private static float lastX = 400f;
         private static float lastY = 400f;
         private static bool firstMouse = true;
+
+        //lighting cucok
+        private static Vector3 lightPos = new Vector3(2.0f, 2.0f, 2.0f);
+        private static Vector3 lightColor = Vector3.One;
+
+        //forgatas cucok
+        private static bool rotateX = false;
+        private static bool rotateY = false;
+        private static bool rotateZ = false;
+        private static float rotationAngle = 0f;
 
         private const string VertexShaderSource = @"
         #version 330 core
         layout (location = 0) in vec3 vPos;
 		layout (location = 1) in vec4 vCol;
+        layout (location = 2) in vec3 vNorm;
 
         uniform mat4 model;
         uniform mat4 view;
         uniform mat4 projection;
 
 		out vec4 outCol;
+        out vec3 outNormal;
+        out vec3 outFragPos;
         
         void main()
         {
 			outCol = vCol;
             gl_Position = projection * view * model * vec4(vPos, 1.0);
+            outNormal = mat3(transpose(inverse(model))) * vNorm;
+            outFragPos = vec3(model * vec4(vPos, 1.0));
         }
         ";
 
@@ -49,11 +65,36 @@ namespace Szeminarium1
         private const string FragmentShaderSource = @"
         #version 330 core
         in vec4 outCol;
+        in vec3 outNormal;
+        in vec3 outFragPos;
+
+        uniform vec3 lightPos;
+        uniform vec3 lightColor;
+        uniform vec3 viewPos;
+
         out vec4 FragColor;
 
         void main()
         {
-            FragColor = outCol;
+            // Ambient
+            float ambientStrength = 0.1;
+            vec3 ambient = ambientStrength * lightColor;
+    
+            // Diffuse 
+            vec3 norm = normalize(outNormal);
+            vec3 lightDir = normalize(lightPos - outFragPos);
+            float diff = max(dot(norm, lightDir), 0.0);
+            vec3 diffuse = diff * lightColor;
+    
+            // Specular
+            float specularStrength = 0.5;
+            vec3 viewDir = normalize(viewPos - outFragPos);
+            vec3 reflectDir = reflect(-lightDir, norm);  
+            float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
+            vec3 specular = specularStrength * spec * lightColor;  
+        
+            vec3 result = (ambient + diffuse + specular) * outCol.rgb;
+            FragColor = vec4(result, outCol.a);
         }
         ";
 
@@ -61,13 +102,15 @@ namespace Szeminarium1
         {
             var options = WindowOptions.Default with
             {
-                Title = "2.Labor - Rubik kocka",
+                Title = "3.3:Labor - Rubik kocka Phong Vilagitas",
                 Size = new(800, 800),
                 VSync = true
             };
             window = Window.Create(options);
             window.Load += OnLoad;
             window.Render += OnRender;
+            window.Update += OnUpdate;
+            window.Closing += OnClose;
             window.Run();
         }
 
@@ -78,20 +121,26 @@ namespace Szeminarium1
 
             Gl = window.CreateOpenGL();
             input = window.CreateInput();
+
+            //ImGui
+            controller = new ImGuiController(Gl, window, input);
+
             Gl.ClearColor(1.0f, 1.0f, 1.0f, 1.0f);
             Gl.Enable(GLEnum.DepthTest);
 
+           
 
-            //shader compile 
+            //vshader letrehoz
             uint vshader = Gl.CreateShader(ShaderType.VertexShader);
             Gl.ShaderSource(vshader, VertexShaderSource);
             Gl.CompileShader(vshader);
 
-
+            //fshader letrehoz
             uint fshader = Gl.CreateShader(ShaderType.FragmentShader);
             Gl.ShaderSource(fshader, FragmentShaderSource);
             Gl.CompileShader(fshader);
 
+            //shader program letrehoz + osszekapcsol
             shaderProgram = Gl.CreateProgram();
             Gl.AttachShader(shaderProgram, vshader);
             Gl.AttachShader(shaderProgram, fshader);
@@ -127,15 +176,26 @@ namespace Szeminarium1
             CreateColorfulCubes();
         }
 
+        private static void OnUpdate(double deltaTime)
+        {
+            controller!.Update((float)deltaTime);
+        }
+
+        private static void OnClose()
+        {
+            controller?.Dispose();
+        }
+
         private static void OnMouseMove(IMouse mouse, Vector2 position)
         {
-            if(firstMouse)
+            if(firstMouse)//kp
             {
                 lastX = position.X;
                 lastY = position.Y;
                 firstMouse = false;
             }
 
+            //mozdulas
             float xOffset = position.X - lastX;
             float yOffset = lastY - position.Y;
             lastX = position.X;
@@ -158,6 +218,7 @@ namespace Szeminarium1
                 pitch = -89.0f;
             }
 
+            //uj irany szamitas
             Vector3 front;
             front.X = MathF.Cos(DegreesToRadians(yaw)) * MathF.Cos(DegreesToRadians(pitch));
             front.Y = MathF.Sin(DegreesToRadians(pitch));
@@ -213,6 +274,7 @@ namespace Szeminarium1
                             (z - 1) * offset
                         );
 
+                        //rnadom szinek
                         Vector4 cubeColor = new Vector4(
                             (float)rand.NextDouble(),
                             (float)rand.NextDouble(),
@@ -231,6 +293,14 @@ namespace Szeminarium1
             Gl!.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
             Gl.UseProgram(shaderProgram);
 
+            //rotacio update
+            if (rotateX || rotateY || rotateZ)
+            {
+                rotationAngle += 0.01f;
+                if (rotationAngle > MathF.PI * 2)
+                    rotationAngle = 0;
+            }
+
             Matrix4x4 view = Matrix4x4.CreateLookAt(cameraPosition, cameraPosition + cameraFront, cameraUp);
             Matrix4x4 projection = Matrix4x4.CreatePerspectiveFieldOfView(
                 DegreesToRadians(45f),
@@ -239,6 +309,16 @@ namespace Szeminarium1
                 100.0f
             );
 
+            //lighting uniforms beallit
+            int lightPosLoc = Gl.GetUniformLocation(shaderProgram, "lightPos");
+            int lightColorLoc = Gl.GetUniformLocation(shaderProgram, "lightColor");
+            int viewPosLoc = Gl.GetUniformLocation(shaderProgram, "viewPos");
+
+            Gl.Uniform3(lightPosLoc, lightPos.X, lightPos.Y, lightPos.Z);
+            Gl.Uniform3(lightColorLoc, lightColor.X, lightColor.Y, lightColor.Z);
+            Gl.Uniform3(viewPosLoc, cameraPosition.X, cameraPosition.Y, cameraPosition.Z);
+
+            //matrixok shader atadasa
             int viewLoc = Gl.GetUniformLocation(shaderProgram, "view");
             int projLoc = Gl.GetUniformLocation(shaderProgram, "projection");
             Gl.UniformMatrix4(viewLoc, 1, false, (float*)&view);
@@ -248,8 +328,43 @@ namespace Szeminarium1
             //render cubes
             foreach (var cube in cubes)
             {
-                cube.Render(Gl, shaderProgram);
+                Matrix4x4 rotation = Matrix4x4.Identity;
+                if (rotateX) rotation *= Matrix4x4.CreateRotationX(rotationAngle);
+                if (rotateY) rotation *= Matrix4x4.CreateRotationY(rotationAngle);
+                if (rotateZ) rotation *= Matrix4x4.CreateRotationZ(rotationAngle);
+
+                cube.Render(Gl, shaderProgram, rotation);
             }
+
+            // Render UI
+            RenderUI();
+
+            controller!.Render();
+        }
+
+        private static void RenderUI()
+        {
+            ImGui.Begin("Lighting Controls");
+
+            // Light position controls
+            ImGui.Text("Light Position");
+            ImGui.DragFloat("X", ref lightPos.X, 0.1f);
+            ImGui.DragFloat("Y", ref lightPos.Y, 0.1f);
+            ImGui.DragFloat("Z", ref lightPos.Z, 0.1f);
+
+            // Light color controls
+            ImGui.Text("Light Color");
+            ImGui.ColorEdit3("Color", ref lightColor);
+
+            // Rotation controls
+            ImGui.Text("Rotation Controls");
+            ImGui.Checkbox("Rotate X", ref rotateX);
+            ImGui.SameLine();
+            ImGui.Checkbox("Rotate Y", ref rotateY);
+            ImGui.SameLine();
+            ImGui.Checkbox("Rotate Z", ref rotateZ);
+
+            ImGui.End();
         }
 
         public unsafe class Cube
@@ -258,6 +373,7 @@ namespace Szeminarium1
             private readonly uint vao;
             private readonly uint vertexBuffer;
             private readonly uint colorBuffer;
+            private readonly uint normalBuffer;
             private readonly uint indexBuffer;
             private readonly Matrix4x4 modelMatrix;
             private readonly Vector4 cubeColor;
@@ -279,6 +395,39 @@ namespace Szeminarium1
                  0.5f, -0.5f, -0.5f,//5
                  0.5f, 0.5f, -0.5f,//6
                  -0.5f, 0.5f, -0.5f,//7
+                };
+
+                float[] normals = {
+                    //front face
+                    0.0f, 0.0f, 1.0f,
+                    0.0f, 0.0f, 1.0f,
+                    0.0f, 0.0f, 1.0f,
+                    0.0f, 0.0f, 1.0f,
+                    //back face
+                    0.0f, 0.0f, -1.0f,
+                    0.0f, 0.0f, -1.0f,
+                    0.0f, 0.0f, -1.0f,
+                    0.0f, 0.0f, -1.0f,
+                    //right face
+                    1.0f, 0.0f, 0.0f,
+                    1.0f, 0.0f, 0.0f,
+                    1.0f, 0.0f, 0.0f,
+                    1.0f, 0.0f, 0.0f,
+                    //left face
+                    -1.0f, 0.0f, 0.0f,
+                    -1.0f, 0.0f, 0.0f,
+                    -1.0f, 0.0f, 0.0f,
+                    -1.0f, 0.0f, 0.0f,
+                    //top face
+                    0.0f, 1.0f, 0.0f,
+                    0.0f, 1.0f, 0.0f,
+                    0.0f, 1.0f, 0.0f,
+                    0.0f, 1.0f, 0.0f,
+                    //bottom face
+                    0.0f, -1.0f, 0.0f,
+                    0.0f, -1.0f, 0.0f,
+                    0.0f, -1.0f, 0.0f,
+                    0.0f, -1.0f, 0.0f
                 };
 
                 uint[] indices =
@@ -318,6 +467,14 @@ namespace Szeminarium1
                 gl.VertexAttribPointer(1, 4, VertexAttribPointerType.Float, false, 0, null);
                 gl.EnableVertexAttribArray(1);
 
+                // Normal buffer
+                normalBuffer = gl.GenBuffer();
+                gl.BindBuffer(GLEnum.ArrayBuffer, normalBuffer);
+                fixed (float* ptr = normals)
+                    gl.BufferData(GLEnum.ArrayBuffer, (nuint)(normals.Length * sizeof(float)), ptr, GLEnum.StaticDraw);
+                gl.VertexAttribPointer(2, 3, VertexAttribPointerType.Float, false, 0, null);
+                gl.EnableVertexAttribArray(2);
+
                 indexBuffer = gl.GenBuffer();
                 gl.BindBuffer(GLEnum.ElementArrayBuffer, indexBuffer);
                 fixed (uint* ptr = indices)
@@ -326,15 +483,14 @@ namespace Szeminarium1
                 gl.BindVertexArray(0);
             }
 
-            public unsafe void Render(GL gl, uint shaderProgram)
+            public unsafe void Render(GL gl, uint shaderProgram, Matrix4x4 rotation)
             {
                 gl.BindVertexArray(vao);
 
+                Matrix4x4 finalModel = rotation * modelMatrix;
+
                 int modelLoc = gl.GetUniformLocation(shaderProgram, "model");
-                fixed (float* modelPtr = &modelMatrix.M11)
-                {
-                    gl.UniformMatrix4(modelLoc, 1, false, modelPtr);
-                }
+                gl.UniformMatrix4(modelLoc, 1, false, (float*)&finalModel);
 
                 gl.DrawElements(GLEnum.Triangles, 36, GLEnum.UnsignedInt, null);
                 gl.BindVertexArray(0);
