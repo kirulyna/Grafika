@@ -1,6 +1,7 @@
 ﻿using Silk.NET.Maths;
 using Silk.NET.OpenGL;
 using System.Globalization;
+using System.Reflection;
 
 namespace Szeminarium1_24_02_17_2
 {
@@ -23,6 +24,186 @@ namespace Szeminarium1_24_02_17_2
             CreateGlArraysFromObjArrays(faceColor, objVertices, objNormals, objFaces, glVertices, glColors, glIndices);
 
             return CreateOpenGlObject(Gl, vao, glVertices, glColors, glIndices);
+        }
+
+        public static GlObject CreateFromObjFile(GL gl, string resourcePath, float[] faceColor)
+        {
+            uint vao = gl.GenVertexArray();
+            gl.BindVertexArray(vao);
+
+            // Beolvasás fájlból vagy beágyazott erőforrásból
+            using var stream = File.Exists(resourcePath)
+                ? File.OpenRead(resourcePath)
+                : Assembly.GetExecutingAssembly().GetManifestResourceStream(resourcePath);
+
+            if (stream == null)
+                throw new FileNotFoundException($"Could not find resource: {resourcePath}");
+
+            using var reader = new StreamReader(stream);
+            ReadObjData(reader, out var vertices, out var normals, out var faces);
+
+            // GL buffer-ek létrehozása (a meglévő logika felhasználásával)
+            var (glVertices, glColors, glIndices) = ConvertToGlArrays(faceColor, vertices, normals, faces);
+            return CreateGlObject(gl, vao, glVertices, glColors, glIndices);
+        }
+
+        private static void ReadObjData(StreamReader reader, out List<float[]> vertices, out List<float[]> normals, out List<int[]> faces)
+        {
+            vertices = new List<float[]>();
+            normals = new List<float[]>();
+            faces = new List<int[]>();
+
+            while (!reader.EndOfStream)
+            {
+                var line = reader.ReadLine();
+
+                if (string.IsNullOrEmpty(line) || line.TrimStart().StartsWith('#'))
+                    continue;
+
+                int spaceIndex = line.IndexOf(' ');
+                if (spaceIndex < 0) continue;
+
+                var lineClassifier = line[..spaceIndex];
+                var lineData = line[(spaceIndex + 1)..].Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+                switch (lineClassifier)
+                {
+                    case "v":
+                        var vertex = new float[3];
+                        for (int i = 0; i < vertex.Length; ++i)
+                            vertex[i] = float.Parse(lineData[i], CultureInfo.InvariantCulture);
+                        vertices.Add(vertex);
+                        break;
+                    case "vn":
+                        var normal = new float[3];
+                        for (int i = 0; i < normal.Length; ++i)
+                            normal[i] = float.Parse(lineData[i], CultureInfo.InvariantCulture);
+                        normals.Add(normal);
+                        break;
+                    case "f":
+                        var face = new int[9];
+                        bool hasNormals = false;
+
+                        for (int i = 0; i < 3; ++i)
+                        {
+                            var vertexData = lineData[i].Split('/');
+                            face[i * 3] = int.Parse(vertexData[0]);
+
+                            if (vertexData.Length > 2 && !string.IsNullOrEmpty(vertexData[2]))
+                            {
+                                face[i * 3 + 2] = int.Parse(vertexData[2]);
+                                hasNormals = true;
+                            }
+                        }
+
+                        if (!hasNormals)
+                        {
+                            var simpleFace = new int[3];
+                            for (int i = 0; i < 3; ++i)
+                                simpleFace[i] = int.Parse(lineData[i].Split('/')[0]);
+                            faces.Add(simpleFace);
+                        }
+                        else
+                        {
+                            faces.Add(face);
+                        }
+                        break;
+                }
+            }
+        }
+
+        private static (List<float> Vertices, List<float> Colors, List<uint> Indices) ConvertToGlArrays(
+            float[] faceColor, List<float[]> objVertices, List<float[]> objNormals, List<int[]> objFaces)
+        {
+            var glVertices = new List<float>();
+            var glColors = new List<float>();
+            var glIndices = new List<uint>();
+            var glVertexIndices = new Dictionary<string, int>();
+
+            foreach (var objFace in objFaces)
+            {
+                bool hasNormals = objFace.Length == 9;
+                Vector3D<float> normal = default;
+
+                if (!hasNormals)
+                {
+                    var aObjVertex = objVertices[objFace[0] - 1];
+                    var a = new Vector3D<float>(aObjVertex[0], aObjVertex[1], aObjVertex[2]);
+                    var bObjVertex = objVertices[objFace[1] - 1];
+                    var b = new Vector3D<float>(bObjVertex[0], bObjVertex[1], bObjVertex[2]);
+                    var cObjVertex = objVertices[objFace[2] - 1];
+                    var c = new Vector3D<float>(cObjVertex[0], cObjVertex[1], cObjVertex[2]);
+
+                    normal = Vector3D.Normalize(Vector3D.Cross(b - a, c - a));
+                }
+
+                for (int i = 0; i < 3; ++i)
+                {
+                    int vertexIndex = objFace[i * (hasNormals ? 3 : 1)] - 1;
+                    var objVertex = objVertices[vertexIndex];
+
+                    Vector3D<float> vertexNormal;
+                    if (hasNormals)
+                    {
+                        int normalIndex = objFace[i * 3 + 2] - 1;
+                        var objNormal = objNormals[normalIndex];
+                        vertexNormal = new Vector3D<float>(objNormal[0], objNormal[1], objNormal[2]);
+                    }
+                    else
+                    {
+                        vertexNormal = normal;
+                    }
+
+                    var glVertex = new List<float> {
+                        objVertex[0], objVertex[1], objVertex[2],
+                        vertexNormal.X, vertexNormal.Y, vertexNormal.Z
+                    };
+
+                    var glVertexStringKey = string.Join(" ", glVertex);
+                    if (!glVertexIndices.TryGetValue(glVertexStringKey, out int index))
+                    {
+                        index = glVertexIndices.Count;
+                        glVertices.AddRange(glVertex);
+                        glColors.AddRange(faceColor);
+                        glVertexIndices.Add(glVertexStringKey, index);
+                    }
+
+                    glIndices.Add((uint)index);
+                }
+            }
+
+            return (glVertices, glColors, glIndices);
+        }
+
+        private static unsafe GlObject CreateGlObject(GL gl, uint vao, List<float> glVertices, List<float> glColors, List<uint> glIndices)
+        {
+            const uint offsetPos = 0;
+            const uint offsetNormal = offsetPos + (3 * sizeof(float));
+            const uint vertexSize = offsetNormal + (3 * sizeof(float));
+
+            uint vertices = gl.GenBuffer();
+            gl.BindBuffer(GLEnum.ArrayBuffer, vertices);
+            gl.BufferData(GLEnum.ArrayBuffer, (ReadOnlySpan<float>)glVertices.ToArray().AsSpan(), GLEnum.StaticDraw);
+            gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, vertexSize, (void*)offsetPos);
+            gl.EnableVertexAttribArray(0);
+
+            gl.EnableVertexAttribArray(2);
+            gl.VertexAttribPointer(2, 3, VertexAttribPointerType.Float, false, vertexSize, (void*)offsetNormal);
+
+            uint colors = gl.GenBuffer();
+            gl.BindBuffer(GLEnum.ArrayBuffer, colors);
+            gl.BufferData(GLEnum.ArrayBuffer, (ReadOnlySpan<float>)glColors.ToArray().AsSpan(), GLEnum.StaticDraw);
+            gl.VertexAttribPointer(1, 4, VertexAttribPointerType.Float, false, 0, null);
+            gl.EnableVertexAttribArray(1);
+
+            uint indices = gl.GenBuffer();
+            gl.BindBuffer(GLEnum.ElementArrayBuffer, indices);
+            gl.BufferData(GLEnum.ElementArrayBuffer, (ReadOnlySpan<uint>)glIndices.ToArray().AsSpan(), GLEnum.StaticDraw);
+
+            gl.BindBuffer(GLEnum.ArrayBuffer, 0);
+            uint indexArrayLength = (uint)glIndices.Count;
+
+            return new GlObject(vao, vertices, colors, indices, indexArrayLength, gl);
         }
 
         private static unsafe GlObject CreateOpenGlObject(GL Gl, uint vao, List<float> glVertices, List<float> glColors, List<uint> glIndices)
@@ -190,4 +371,5 @@ namespace Szeminarium1_24_02_17_2
             }
         }
     }
+
 }
